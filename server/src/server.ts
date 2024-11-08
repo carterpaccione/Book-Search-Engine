@@ -1,39 +1,83 @@
-import express from 'express';
-import path from 'node:path';
-import db from './config/connection.js';
-import routes from './routes/index.js';
+import express from "express";
+import path from "node:path";
+import db from "./config/connection.js";
 
-import { ApolloServer } from '@apollo/server'
-import { expressMiddleware as apolloExpressMiddleware } from '@apollo/server/express4';
-import { typeDefs, resolvers } from './schemas/index.js';
+import { ApolloServer } from "@apollo/server";
+import { expressMiddleware as apolloExpressMiddleware } from "@apollo/server/express4";
+import { typeDefs, resolvers } from "./schemas/index.js";
 
-const app = express();
-const PORT = process.env.PORT || 3001;
+import { fileURLToPath } from "node:url";
+
+// Load environment variables from .env file
+import dotenv from "dotenv";
+const result = dotenv.config({path: './server/.env'});
+if (result.error) {
+  console.error(`Error loading .env file: ${result.error}`);
+} else {
+  console.log(`.env file loaded successfully`);
+}
 
 // create a new Apollo server and pass in our schema data
-const server = new ApolloServer ({
+const server = new ApolloServer({
   typeDefs,
-  resolvers
+  resolvers,
 });
 
 const startApolloServer = async () => {
+  // Start the Apollo server
   await server.start();
 
+  // connect to the database
+  await db();
+
+  // create an instance of an express server
+  const app = express();
+  const PORT = process.env.PORT || 3001;
+
+  // Apply the Apollo GraphQL middleware and set the path to /graphql
   app.use(express.urlencoded({ extended: true }));
   app.use(express.json());
 
-  app.use('/graphql', apolloExpressMiddleware(server));
-  
+  app.use(
+    "/graphql",
+    apolloExpressMiddleware(server, {
+      context: async ({ req }) => {
+        return {
+          user: req.user,
+        };
+      },
+    })
+  );
+
   // if we're in production, serve client/build as static assets
-  if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.join(__dirname, '../client/build')));
+  if (process.env.NODE_ENV === "production") {
+    console.log(`In production mode, from NODE_ENV: ${process.env.NODE_ENV}`);
+    const __filename = fileURLToPath(import.meta.url);
+
+    app.use(
+      "/graphql",
+      apolloExpressMiddleware(server, {
+        context: async ({ req }) => {
+          return {
+            user: req.user,
+          };
+        },
+      })
+    );
+    
+    const __dirname = path.dirname(__filename);
+    app.use(express.static(path.join(__dirname, "../../client/dist")));
+
+    // app.get("*", (_req, res) => {
+    //   res.sendFile(path.join(__dirname, "../../client/dist/index.html"));
+    // });
   }
-  
-  app.use(routes);
-  
-  db.once('open', () => {
-    app.listen(PORT, () => console.log(`🌍 Now listening on localhost:${PORT}`));
-  });  
-}
+
+  // start the server
+  app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
+    console.log(`GraphQL server running at http://localhost:${PORT}/graphql`);
+  });
+};
 
 startApolloServer();
