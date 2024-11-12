@@ -2,15 +2,18 @@ import express from "express";
 import path from "node:path";
 import db from "./config/connection.js";
 
+import type { Request, Response } from "express";
 import { ApolloServer } from "@apollo/server";
 import { expressMiddleware as apolloExpressMiddleware } from "@apollo/server/express4";
 import { typeDefs, resolvers } from "./schemas/index.js";
 
 import { fileURLToPath } from "node:url";
 
+import { authenticateToken } from "./utils/auth.js";
+
 // Load environment variables from .env file
 import dotenv from "dotenv";
-const result = dotenv.config({path: './server/.env'});
+const result = dotenv.config({ path: "./server/.env" });
 if (result.error) {
   console.error(`Error loading .env file: ${result.error}`);
 } else {
@@ -40,12 +43,8 @@ const startApolloServer = async () => {
 
   app.use(
     "/graphql",
-    apolloExpressMiddleware(server, {
-      context: async ({ req }) => {
-        return {
-          user: req.user,
-        };
-      },
+    apolloExpressMiddleware(server as any, {
+      context: authenticateToken as any,
     })
   );
 
@@ -56,21 +55,17 @@ const startApolloServer = async () => {
 
     app.use(
       "/graphql",
-      apolloExpressMiddleware(server, {
-        context: async ({ req }) => {
-          return {
-            user: req.user,
-          };
-        },
+      apolloExpressMiddleware(server as any, {
+        context: authenticateToken as any,
       })
     );
-    
+
     const __dirname = path.dirname(__filename);
     app.use(express.static(path.join(__dirname, "../../client/dist")));
 
-    // app.get("*", (_req, res) => {
-    //   res.sendFile(path.join(__dirname, "../../client/dist/index.html"));
-    // });
+    app.get("*", (_req: Request, res: Response) => {
+      res.sendFile(path.join(__dirname, "../../client/dist/index.html"));
+    });
   }
 
   // start the server

@@ -1,73 +1,105 @@
-import User, { UserDocument } from '../models/User.js';
-import { signToken, AuthenticationError } from '../utils/auth.js';
+import User, { UserDocument } from "../models/User.js";
+import { signToken, AuthenticationError } from "../utils/auth.js";
 
-interface BookData {
+// interface BookData {
+//     bookId: string;
+//     authors: string[];
+//     description: string;
+//     title: string;
+//     image: string;
+//     link: string;
+// }
+
+interface saveBookArgs {
+  input: {
+    bookId: string;
     authors: string[];
     description: string;
     title: string;
-    bookId: string;
     image: string;
     link: string;
-}
-
-interface saveBookArgs {
-    userId: string;
-    bookData: BookData;
+  };
 }
 
 interface Context {
-    user?: UserDocument;
+  user?: UserDocument;
+}
+
+interface LoginArgs {
+  input: {
+    email: string;
+    password: string;
+  };
+}
+
+interface AddUserArgs {
+  username: string;
+  email: string;
+  password: string;
 }
 
 const resolvers = {
   Query: {
     me: async (
       _parent: any,
+      _args: any,
       context: Context
-    ): Promise<UserDocument | null> => {
-      if (context.user) {
-        const userData = await User.findOne({ _id: context.user._id }).select(
-          "-__v -password"
-        );
-        return userData;
-      }
+  ): Promise<UserDocument | null> => {
+    if (!context.user) {
       throw new AuthenticationError("Not logged in");
-    },
-  },
+    }
+
+    try {
+      return await User.findOne({ _id: context.user._id });
+    } catch (err) {
+      console.error(err);
+      throw new AuthenticationError("Something went wrong!");
+    }
+  }
+},
   Mutation: {
     login: async (
       _parent: any,
-      { email, password }: { email: string; password: string }
-    ) => {
-      const user = await User.findOne({ email });
+      { input }: LoginArgs
+    ): Promise<{ token: string; user: UserDocument }> => {
+      try {
+        const user = await User.findOne({ email: input.email });
 
-      if (!user) {
-        throw AuthenticationError;
+        if (!user) {
+          throw new AuthenticationError("Could not find user with that email!");
+        }
+
+        const correctPw = await user.isCorrectPassword(input.password);
+
+        if (!correctPw) {
+          throw new AuthenticationError("Incorrect password!");
+        }
+
+        const token = signToken(user.username, user.email, user._id);
+        return { token, user };
+      } catch (err) {
+        console.error(err);
+        throw new AuthenticationError("Something went wrong!");
       }
-
-      const correctPw = await user.isCorrectPassword(password);
-
-      if (!correctPw) {
-        throw AuthenticationError;
-      }
-
-      const token = signToken(user.username, user.email, user._id);
-      return { token, user };
     },
     addUser: async (
       _parent: any,
-      args: { username: string; email: string; password: string }
-    ): Promise<{token: string, user: UserDocument}> => {
+      args: AddUserArgs
+    ): Promise<{ token: string; user: UserDocument }> => {
       const user = await User.create(args);
       const token = signToken(user.username, user.email, user._id);
       return { token, user };
     },
-    saveBook: async (_parent: any, args: saveBookArgs, context: Context): Promise<UserDocument | null> => {
+    saveBook: async (
+      _parent: any,
+      { input }: saveBookArgs,
+      context: Context
+    ): Promise<UserDocument | null> => {
       if (context.user) {
         const user = User.findOneAndUpdate(
           { _id: context.user._id },
           {
-            $addToSet: { savedBooks: args.bookData },
+            $addToSet: { savedBooks: input },
           },
           { new: true, runValidators: true }
         );
@@ -84,7 +116,7 @@ const resolvers = {
       if (context.user) {
         return await User.findOneAndUpdate(
           { _id: context.user._id },
-          { $pull: { savedBooks: { _id: bookId } } },
+          { $pull: { savedBooks: { bookId: bookId } } },
           { new: true }
         );
       }
