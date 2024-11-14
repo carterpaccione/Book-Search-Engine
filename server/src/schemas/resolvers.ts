@@ -33,9 +33,11 @@ interface LoginArgs {
 }
 
 interface AddUserArgs {
-  username: string;
-  email: string;
-  password: string;
+  input: {
+    username: string;
+    email: string;
+    password: string;
+  };
 }
 
 const resolvers = {
@@ -44,19 +46,19 @@ const resolvers = {
       _parent: any,
       _args: any,
       context: Context
-  ): Promise<UserDocument | null> => {
-    if (!context.user) {
-      throw new AuthenticationError("Not logged in");
-    }
+    ): Promise<UserDocument | null> => {
+      if (!context.user) {
+        throw new AuthenticationError("Not logged in");
+      }
 
-    try {
-      return await User.findOne({ _id: context.user._id });
-    } catch (err) {
-      console.error(err);
-      throw new AuthenticationError("Something went wrong!");
-    }
-  }
-},
+      try {
+        return await User.findOne({ _id: context.user._id });
+      } catch (err) {
+        console.error(err);
+        throw new AuthenticationError("Something went wrong!");
+      }
+    },
+  },
   Mutation: {
     login: async (
       _parent: any,
@@ -84,9 +86,9 @@ const resolvers = {
     },
     addUser: async (
       _parent: any,
-      args: AddUserArgs
+      { input }: AddUserArgs
     ): Promise<{ token: string; user: UserDocument }> => {
-      const user = await User.create(args);
+      const user = await User.create({ ...input });
       const token = signToken(user.username, user.email, user._id);
       return { token, user };
     },
